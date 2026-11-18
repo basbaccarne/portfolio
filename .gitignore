@@ -1,0 +1,16 @@
+# Dependencies and build output
+node_modules/
+dist/
+
+# Local settings (Supabase URL, key and team e-mail)
+.env
+.env.*
+!.env.example
+
+# Real data converted from the Excel sheet: contains names, never commit
+data/
+
+# OS and tool files
+.DS_Store
+Thumbs.db
+.claude/
