@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch, watchEffect } from 'vue'
-import { ChevronRight, Pencil, X, ChevronsUpDown, GraduationCap, Users, Plus, Layers, Eye, EyeOff, Archive, ArchiveRestore } from 'lucide-vue-next'
+import { ChevronRight, Pencil, X, ChevronsUpDown, GraduationCap, Users, Plus, Layers, Eye, EyeOff, Archive, ArchiveRestore, GripVertical } from 'lucide-vue-next'
 import LoadCell from './LoadCell.vue'
 import {
-  promisedOf, PROMISE, toggleOverlap, listOf, listCounts, toggleHidden, toggleArchived, LIST_WORDS, type ListName, type Listable,
+  promisedOf, PROMISE, toggleOverlap, listOf, listCounts, toggleHidden, toggleArchived, moveRecord, LIST_WORDS, type ListName, type Listable,
   state, loadOf, projectTotal, balanceOf, makeBalance, valueOf, plannedOf, fundedOf, differs, teachingOf, baseOf, personById, projectById,
   qYear, qNum, qLabel, dateToQ, shiftDate, nowQ, currentQ, fmt, initials,
   colorOf, tagOf, setCells, addAssignment, removeAssignment, jumpTo, takeSnapshot, pushUndo, pruneOutside,
@@ -376,6 +376,29 @@ const scrollToNow = () => { if (scroller.value) scroller.value.scrollLeft = x(cu
 onMounted(scrollToNow)
 watch(actuals, () => nextTick(scrollToNow)) // months and quarters have different widths
 
+/* ---------- Reordering rows (drag the grip) ---------- */
+const dragRowId = ref<string | null>(null)
+const dropAt = ref<null | { id: string; after: boolean }>(null)
+function rowDragStart(e: DragEvent, g: Group) {
+  dragRowId.value = g.id
+  e.dataTransfer!.effectAllowed = 'move'
+  e.dataTransfer!.setData('text/plain', g.id)
+  const row = (e.target as HTMLElement).closest('.row') as HTMLElement | null
+  if (row) e.dataTransfer!.setDragImage(row, 24, row.offsetHeight / 2)
+}
+function rowDragOver(e: DragEvent, g: Group) {
+  if (!dragRowId.value) return
+  e.preventDefault()
+  e.dataTransfer!.dropEffect = 'move'
+  const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  dropAt.value = g.id === dragRowId.value ? null : { id: g.id, after: e.clientY > r.top + r.height / 2 }
+}
+function rowDrop() {
+  if (dragRowId.value && dropAt.value) moveRecord(state.view, dragRowId.value, dropAt.value.id, dropAt.value.after)
+  rowDragEnd()
+}
+function rowDragEnd() { dragRowId.value = null; dropAt.value = null }
+
 /* ---------- Team totals ---------- */
 function teamBalance(q: number): Balance {
   let capacity = 0, fixed = 0, load = 0, plan = 0
@@ -430,8 +453,19 @@ function teamBalance(q: number): Balance {
         <div class="today" :style="{ left: LABEL + x(nowQ) + 'px' }" />
 
         <template v-for="g in groups" :key="g.id">
-          <div class="row group" :class="{ flash: flashId === g.id, open: state.expanded[g.id] }" :data-id="g.id">
+          <div
+            class="row group" :data-id="g.id"
+            :class="{
+              flash: flashId === g.id, open: state.expanded[g.id], dragged: dragRowId === g.id,
+              'drop-before': dropAt?.id === g.id && !dropAt.after, 'drop-after': dropAt?.id === g.id && dropAt.after,
+            }"
+            @dragover="rowDragOver($event, g)" @drop.prevent="rowDrop"
+          >
             <div class="label" @click="state.expanded[g.id] = !state.expanded[g.id]">
+              <span
+                class="grip" draggable="true" title="Drag to change the order (for everyone)"
+                @click.stop @dragstart="rowDragStart($event, g)" @dragend="rowDragEnd"
+              ><GripVertical :size="14" /></span>
               <ChevronRight class="chev" :size="16" />
               <template v-if="g.project">
                 <span class="dot" :style="{ background: colorOf(g.project.color) }" />

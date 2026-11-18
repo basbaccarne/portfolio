@@ -26,6 +26,7 @@ Funding follows the plan until you type something else, so only exceptions need 
 - **Units:** one person-month (PM) is 17.5 working days, and a full-time quarter is 3 PM. A toggle switches the display between months and days. You can always type `9d` for days, `1.5pm` for months or `50%` for half a quarter.
 - **Rescheduling:** drag a project or PhD bar to move it, or drag its edges to change the start or end. Effort and milestones move along.
 - **Reading a number:** hover or select a cell and the bottom bar spells it out, for example "1.5 PM = 26 days (50% of full time)".
+- **Reordering:** drag the grip at the left of a project, person or PhD row. The order is shared with everyone and rows inside an expanded project or person follow it.
 - **Switching sides:** click a person inside a project to jump to their workload, and the other way round.
 
 ## Concepts
@@ -65,6 +66,8 @@ To share one dataset with a team, connect a [Supabase](https://supabase.com/) pr
 4. Copy `.env.example` to `.env.local` and fill in the project URL, the anon key and the team e-mail. Never put the password in a file.
 5. Restart the app. It now asks for the team password, loads from the database, saves every change and follows changes made by others.
 
+Each browser stays signed in until someone clicks "Sign out" at the bottom right; that signs out only that browser and changes no data. Use it on shared computers.
+
 Only the listed e-mail can read or write; the rule is in `supabase/schema.sql`. With a database configured, nothing is stored in the browser except personal preferences (house style, unit, hidden items). When two people edit the same row at the same moment, the last save wins.
 
 ## Hosting
@@ -94,7 +97,7 @@ Then use "Import data" in the app's bottom bar. The `data/` folder is ignored by
 | File | What is in it |
 |---|---|
 | `src/store.ts` | Data model, units, lenses, lists, derived numbers, all actions, undo |
-| `src/sync.ts` | Supabase: unlock, load, save, live updates |
+| `src/sync.ts` | Supabase: sign in and out, load, save, live updates |
 | `src/seed.ts` | Fictional demo data |
 | `src/components/Timeline.vue` | The grid: rows, cells, editing, dragging, readout |
 | `src/components/LoadCell.vue` | One quarter or month of a person's load |

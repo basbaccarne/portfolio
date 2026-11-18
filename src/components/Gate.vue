@@ -29,7 +29,7 @@ async function submit() {
         </label>
         <p v-if="error" class="gate-error">{{ error }}</p>
         <button class="primary" type="submit" :disabled="busy || !password">{{ busy ? 'Checking…' : 'Open' }}</button>
-        <p class="note">This browser stays unlocked until you choose "Lock".</p>
+        <p class="note">You stay signed in on this browser until you click "Sign out" at the bottom right.</p>
       </template>
     </form>
   </div>

@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { FolderKanban, Users, GraduationCap, Plus, Undo2, ChevronLeft, ChevronRight, Check, FileText } from 'lucide-vue-next'
 import Timeline from './components/Timeline.vue'
 import Drawer from './components/Drawer.vue'
 import MonthReport from './components/MonthReport.vue'
 import Gate from './components/Gate.vue'
-import { remote, status, syncError, resume, lock } from './sync'
+import { remote, status, syncError, resume, signOut } from './sync'
 import {
   state, canUndo, undo, addProject, addPerson, addPhd, resetDemo, theme, THEMES, unit, UNITS, amount,
   balanceOf, LENSES, currentQ, qLabel, currentM, mLabel, fillFromPlan, replaceData,
@@ -36,6 +36,13 @@ function onKey(e: KeyboardEvent) {
 }
 onMounted(() => window.addEventListener('keydown', onKey))
 onMounted(resume)
+
+const signingOut = ref(false)
+async function leave() {
+  signingOut.value = true
+  await signOut()
+  signingOut.value = false // only reached when signing out was cancelled
+}
 
 /* ---------- Import / export ---------- */
 function exportData() {
@@ -147,7 +154,11 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
         <label class="link-btn">Import data<input type="file" accept=".json,application/json" hidden @change="importData" /></label>
         <button class="link-btn" @click="exportData">Export</button>
         <button v-if="!remote" class="link-btn" @click="resetDemo">Reset demo data</button>
-        <button v-else class="link-btn" @click="lock">Lock</button>
+        <button
+          v-else class="link-btn" :disabled="signingOut"
+          title="Sign out on this browser only. You need the team password to get back in; nobody else is signed out and no data changes."
+          @click="leave"
+        >{{ signingOut ? 'Signing out…' : 'Sign out' }}</button>
       </span>
     </footer>
   </div>

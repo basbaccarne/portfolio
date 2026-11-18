@@ -307,7 +307,28 @@ export function pushUndo(snapshot: string) {
 }
 export function undo() {
   const s = undoStack.value.pop()
-  if (s) state.data = JSON.parse(s)
+  if (s) { state.data = JSON.parse(s); orderChanged.value++ }
+}
+
+/* ---------- Row order ----------
+ * The order of projects, people and PhDs is the order of their arrays. It is shared:
+ * the database stores it, so everyone sees the same order. Rows inside an expanded
+ * project or person follow the same order.
+ * `orderChanged` tells the sync layer that positions, not only contents, must be saved.
+ */
+export const orderChanged = ref(0)
+/** Move one record so it sits just before or just after another one of the same kind. */
+export function moveRecord(view: View, id: string, targetId: string, after: boolean) {
+  if (id === targetId) return
+  const list = (view === 'projects' ? state.data.projects : view === 'people' ? state.data.people : state.data.phds) as { id: string }[]
+  const from = list.findIndex(x => x.id === id)
+  if (from < 0 || list.findIndex(x => x.id === targetId) < 0) return
+  mutate(() => {
+    const [item] = list.splice(from, 1)
+    const to = list.findIndex(x => x.id === targetId)
+    list.splice(after ? to + 1 : to, 0, item)
+  })
+  orderChanged.value++
 }
 /** Run a change as one undoable step. */
 export function mutate(fn: () => void) {
@@ -317,11 +338,13 @@ export function mutate(fn: () => void) {
 /** Replace everything with an imported dataset (one undoable step). */
 export function replaceData(input: Partial<Data>) {
   mutate(() => { state.data = normalise(input) })
+  orderChanged.value++
   state.drawer = null
   state.expanded = {}
 }
 export function resetDemo() {
   mutate(() => { state.data = seed() })
+  orderChanged.value++
   state.drawer = null
 }
 

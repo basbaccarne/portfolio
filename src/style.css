@@ -342,3 +342,12 @@ button.add-select { display: inline-flex; align-items: center; gap: 4px; }
 .head .ghost.active { background: var(--hover); color: var(--accent); }
 .drawer footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .drawer footer .danger { margin-left: auto; }
+
+/* ---------- Reordering rows ---------- */
+.row.group .label { padding-left: 2px; gap: 6px; }
+.grip { flex: none; display: grid; place-items: center; width: 14px; height: 26px; color: var(--muted); cursor: grab; opacity: 0; }
+.label:hover .grip, .row.dragged .grip { opacity: 1; }
+.grip:active { cursor: grabbing; }
+.row.dragged { opacity: .45; }
+.row.group.drop-before { box-shadow: inset 0 2px 0 var(--accent); }
+.row.group.drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
