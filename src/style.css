@@ -324,6 +324,12 @@ button.add-select { display: inline-flex; align-items: center; gap: 4px; }
 .cell.lap .chip { background: none; border: 1px dashed color-mix(in srgb, var(--c) 55%, white); }
 .cell.lap .chip i { background: color-mix(in srgb, var(--c) 10%, white); }
 
+/* ---------- Work that counts toward a PhD ---------- */
+.cell.phdw .chip::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: color-mix(in srgb, var(--accent) 75%, black); }
+.chip.phdw { border: 1px solid color-mix(in srgb, var(--accent) 35%, white); }
+.chip.phdw i { background: color-mix(in srgb, var(--accent) 14%, white); }
+.fcell.out { background: var(--off); }
+
 /* ---------- Status bar tools, team password ---------- */
 .tools { display: flex; align-items: center; gap: 14px; white-space: nowrap; }
 .tools label.link-btn { cursor: pointer; }

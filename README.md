@@ -33,7 +33,9 @@ Funding follows the plan until you type something else, so only exceptions need 
 
 - **Promised effort.** Each project has a "Promised" row: the PM per quarter in the proposal. The bar shows `planned/promised` in red where the team's effort falls short.
 - **Contract, faculty share, teaching.** A person has a contract (PM per quarter), a share paid by the faculty (salary that needs no project funding) and a teaching load per quarter that repeats every year. Teaching takes time away in Plan; the faculty share takes salary away in Funding.
-- **Overlapping effort.** The layers button on a row marks effort that already counts elsewhere (for example PhD research that feeds a project). It counts for the project but is not added to the person's load, and the project does not pay for it by default.
+- **Overlapping effort.** The layers button on a row marks effort that already counts elsewhere (for example a fellowship that is planned as its own row). It counts for the project but is not added to the person's load, and the project does not pay for it by default.
+- **Counts toward a PhD.** For someone with a PhD, the cap button on a project row marks project work that also advances the PhD; marked cells get a dark underline. It is only a note: load and funding stay the same. Each PhD shows a "From projects" row with how much project work counts toward it per quarter, and in total.
+- **Marking per quarter.** Both buttons work on the selected cells of their row (drag across quarters first), or on the whole run when nothing in that row is selected. Clicking again removes the mark.
 - **Hide and put away.** The eye button hides a project, person or PhD for you only (remembered in your browser). The box button puts it away for everyone: projects are *archived*, people become *alumni*, PhDs are marked *completed*. Each record is in exactly one list (active, hidden, or put away; put away wins), and the two counters at the top of a list open the other two. Nothing is deleted and the effort still counts in loads, totals and reports.
 - **Actuals.** The grid switches to months and days. Dashed numbers are planned but not reported yet. "Fill from plan" pre-fills a month; "Month report" gives a table to copy into Excel or an e-mail.
 - **House styles.** UGent and imec, switchable in the top bar. No official logos are included.
@@ -112,7 +114,7 @@ Then use "Import data" in the app's bottom bar. The `data/` folder is ignored by
 
 ## Known limits
 
-- The overlapping mark applies to a person on a project for its whole run, not per quarter.
+- The marks are per quarter, not per month: in Actuals a mark applies to all three months of its quarter.
 - Reported months cannot be locked.
 - Projects have no euro budget; promised effort is in person-months only.
 - The shared password cannot tell people apart, and hidden items do not follow you to another browser.

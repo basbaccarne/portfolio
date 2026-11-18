@@ -3,7 +3,7 @@ import { computed, nextTick, onMounted, ref, watch, watchEffect } from 'vue'
 import { ChevronRight, Pencil, X, ChevronsUpDown, GraduationCap, Users, Plus, Layers, Eye, EyeOff, Archive, ArchiveRestore, GripVertical } from 'lucide-vue-next'
 import LoadCell from './LoadCell.vue'
 import {
-  promisedOf, PROMISE, toggleOverlap, listOf, listCounts, toggleHidden, toggleArchived, moveRecord, LIST_WORDS, type ListName, type Listable,
+  promisedOf, PROMISE, toggleMark, markAt, markAny, phdWorkOf, type MarkKey, listOf, listCounts, toggleHidden, toggleArchived, moveRecord, LIST_WORDS, type ListName, type Listable,
   state, loadOf, projectTotal, balanceOf, makeBalance, valueOf, plannedOf, fundedOf, differs, teachingOf, baseOf, personById, projectById,
   qYear, qNum, qLabel, dateToQ, shiftDate, nowQ, currentQ, fmt, initials,
   colorOf, tagOf, setCells, addAssignment, removeAssignment, jumpTo, takeSnapshot, pushUndo, pruneOutside,
@@ -193,8 +193,59 @@ function cellInfo(r: Row, a: number, b: number) {
   const what = pm ? `${both(pm)} ${verb} (${shareOfFullTime(pm)} of full time)` : none
   const diff = differs(r.a, lo) ? ` · differs: ${amount(plannedOf(r.a, lo))} planned, ${amount(fundedOf(r.a, lo))} paid` : ''
   const first = r.person.name.split(' ')[0]
-  const tail = r.a.overlap && !funding.value ? `overlaps ${first}'s other work, so it is not added to their load` : `${first}'s quarter: ${gapText(balanceOf(r.person, lo))}`
-  return `${head}${what}${diff} · ${tail}`
+  const tail = markAt(r.a.overlap, lo) && !funding.value ? `overlaps ${first}'s other work, so it is not added to their load` : `${first}'s quarter: ${gapText(balanceOf(r.person, lo))}`
+  const phd = markAt(r.a.phdWork, lo) ? ` · counts toward ${first}'s PhD` : ''
+  return `${head}${what}${diff}${phd} · ${tail}`
+}
+/* ---------- Marks: overlapping effort, and work that counts toward a PhD ----------
+ * The button on a row marks the selected quarters of that row, or its whole run when nothing on it is selected.
+ */
+function selQuarters(r: Row): number[] {
+  const s = sel.value
+  if (!s || s.aid !== r.a.id) return []
+  const out = new Set<number>()
+  for (let t = Math.min(s.a, s.b); t <= Math.max(s.a, s.b); t++) out.add(toQ(t))
+  return [...out]
+}
+function whenText(qs: number[]) {
+  if (!qs.length) return 'the whole run'
+  const lo = Math.min(...qs), hi = Math.max(...qs)
+  return lo === hi ? qLabel(lo) : `${qLabel(lo)} – ${qLabel(hi)}`
+}
+function markTitle(r: Row, key: MarkKey) {
+  const qs = selQuarters(r)
+  const m = r.a[key]
+  const all = qs.length ? qs.every(q => markAt(m, q)) : m === true
+  const when = whenText(qs)
+  const first = r.person.name.split(' ')[0]
+  const scope = qs.length ? '' : ' Select quarters first to mark only those.'
+  if (key === 'phdWork') {
+    return all
+      ? `Counts toward ${first}'s PhD (${when}). Click to undo.${scope}`
+      : `Count ${when} toward ${first}'s PhD. Only a note: load and funding stay the same.${scope}`
+  }
+  return all
+    ? `Overlapping effort (${when}): counts for the project, not on top of ${first}'s other work. Click to count it as extra time again.${scope}`
+    : `Mark ${when} as overlapping effort: the same work already counts elsewhere, so it is not extra time for ${first}.${scope}`
+}
+function mark(r: Row, key: MarkKey) {
+  toggleMark(r.a.id, key, selQuarters(r))
+  scroller.value?.focus({ preventScroll: true })
+}
+/** The "From projects" row of a PhD: one quarter, or a month in days for actuals. */
+const phdWork = (phd: Phd, t: number) => phdWorkOf(phd, t, actuals.value ? 'actuals' : 'plan')
+function phdWorkInfo(g: Group, t: number) {
+  const { total, parts } = phdWork(g.phd!, t)
+  const first = g.owner?.name.split(' ')[0] ?? 'This person'
+  const when = actuals.value ? mLabel(t) : qLabel(t)
+  if (!total) return `${first}'s PhD · ${when}: no project work counts toward it. Mark it with the cap button on a project row.`
+  const amt = (v: number) => (actuals.value ? `${n0(v)} days` : amount(v))
+  return `${first}'s PhD · ${when}: ${actuals.value ? amt(total) : both(total)} of project work counts toward it (${parts.map(p => `${p.project.name} ${amt(p.v)}`).join(', ')})`
+}
+function phdWorkTotal(phd: Phd) {
+  let pm = 0
+  for (let q = phd.start; q <= phd.end; q++) pm += phdWorkOf(phd, q).total
+  return pm
 }
 const selInfo = computed(() => {
   const s = sel.value
@@ -320,7 +371,11 @@ function dragStart(e: PointerEvent, p: Spanned, mode: DragMode) {
     start: p.start, end: p.end,
     dates: p.milestones.map(m => m.date),
     promised: { ...(p as Project).promised },
-    pm: state.data.assignments.filter(a => a.projectId === p.id).map(a => ({ a, pm: { ...a.pm }, funded: { ...a.funded } })),
+    pm: state.data.assignments.filter(a => a.projectId === p.id).map(a => ({
+      a, pm: { ...a.pm }, funded: { ...a.funded },
+      // Marks for single quarters move along too (a mark for the whole run is `true` and needs nothing).
+      marks: (['overlap', 'phdWork'] as MarkKey[]).filter(k => typeof a[k] === 'object').map(k => ({ k, m: { ...(a[k] as Record<number, boolean>) } })),
+    })),
   }
   frozenRange.value = { ...liveRange.value }
   const R = frozenRange.value
@@ -341,6 +396,7 @@ function dragStart(e: PointerEvent, p: Spanned, mode: DragMode) {
       for (const o of orig.pm) {
         o.a.pm = Object.fromEntries(Object.entries(o.pm).map(([q, v]) => [+q + dq, v]))
         if (o.a.funded) o.a.funded = Object.fromEntries(Object.entries(o.funded).map(([q, v]) => [+q + dq, v]))
+        for (const { k, m } of o.marks) o.a[k] = Object.fromEntries(Object.entries(m).map(([q, v]) => [+q + dq, v]))
       }
       p.milestones.forEach((m, i) => { m.date = shiftDate(orig.dates[i], dq * 3) })
       if ((p as Project).promised) (p as Project).promised = Object.fromEntries(Object.entries(orig.promised).map(([q, v]) => [+q + dq, v]))
@@ -572,6 +628,20 @@ function teamBalance(q: number): Balance {
           </div>
 
           <template v-if="state.expanded[g.id] && g.phd">
+            <div class="row child">
+              <div class="label">
+                <span class="name chapter">From projects</span>
+                <span class="meta">{{ phdWorkTotal(g.phd) ? `${amount(phdWorkTotal(g.phd))} counts toward the PhD` : 'project work that counts toward the PhD' }}</span>
+              </div>
+              <div class="track">
+                <div
+                  v-for="t in quarters" :key="t" class="fcell" :class="{ out: toQ(t) < g.phd.start || toQ(t) > g.phd.end }"
+                  @pointerenter="hover = phdWorkInfo(g, t)"
+                >
+                  <span v-if="phdWork(g.phd, t).total" class="chip phdw"><i :style="{ width: share(phdWork(g.phd, t).total) }" /><b>{{ disp(phdWork(g.phd, t).total) }}</b></span>
+                </div>
+              </div>
+            </div>
             <div v-for="c in g.phd.chapters" :key="c.id" class="row child">
               <div class="label">
                 <span class="name chapter">{{ c.title }}</span>
@@ -630,18 +700,24 @@ function teamBalance(q: number): Balance {
                   <span v-if="!g.project" class="meta">{{ tagOf(r.project) }}</span>
                 </button>
                 <button
-                  class="icon-btn" :class="r.a.overlap ? 'lap-on' : 'reveal'"
-                  :title="r.a.overlap
-                    ? 'Overlapping effort: counts for the project, not on top of this person\'s other work. Click to count it as extra time again.'
-                    : 'Mark as overlapping effort: the same work already counts elsewhere, so it is not extra time for this person'"
-                  @click="toggleOverlap(r.a.id)"
+                  v-if="phdOf(r.person.id) || markAny(r.a.phdWork)"
+                  class="icon-btn" :class="markAny(r.a.phdWork) ? 'lap-on' : 'reveal'"
+                  :title="markTitle(r, 'phdWork')" @pointerdown.prevent @click="mark(r, 'phdWork')"
+                ><GraduationCap :size="14" /></button>
+                <button
+                  class="icon-btn" :class="markAny(r.a.overlap) ? 'lap-on' : 'reveal'"
+                  :title="markTitle(r, 'overlap')" @pointerdown.prevent @click="mark(r, 'overlap')"
                 ><Layers :size="14" /></button>
                 <button class="icon-btn reveal" title="Remove from project" @click="removeAssignment(r.a.id)"><X :size="14" /></button>
               </div>
               <div class="track">
                 <div
                   v-for="q in quarters" :key="q" class="cell"
-                  :class="{ out: !inSpan(r, q), sel: inSel(r.a.id, q), over: !!valueOf(r.a, q) && !r.a.overlap && balanceOf(r.person, q).over, lap: !!r.a.overlap, diff: marked(r, q) }"
+                  :class="{
+                    out: !inSpan(r, q), sel: inSel(r.a.id, q), diff: marked(r, q),
+                    over: !!valueOf(r.a, q) && !markAt(r.a.overlap, toQ(q)) && balanceOf(r.person, q).over,
+                    lap: inSpan(r, q) && markAt(r.a.overlap, toQ(q)), phdw: inSpan(r, q) && markAt(r.a.phdWork, toQ(q)),
+                  }"
                   :style="{ '--c': colorOf(r.project.color) }"
                   @pointerdown="cellDown($event, r, q)" @pointerenter="cellEnter(r, q)" @dblclick="startEdit(null)"
                 >

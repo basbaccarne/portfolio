@@ -100,7 +100,13 @@ export function seed(): Data {
     for (let q = from; q <= to; q++) a.funded[q] = pm
   }
   // Lotte's work on Empathic AI is part of her PhD research: it counts for the project, not on top of her PhD time.
-  assignments.find(a => a.projectId === 'prj_emp' && a.personId === 'per_lotte')!.overlap = true
+  const lotteEmp = assignments.find(a => a.projectId === 'prj_emp' && a.personId === 'per_lotte')!
+  lotteEmp.overlap = true
+  lotteEmp.phdWork = true
+  // Tom is paid by the textiles project; from 2027 his field studies there also count toward his PhD.
+  const tomText = assignments.find(a => a.projectId === 'prj_text' && a.personId === 'per_tom')!
+  tomText.phdWork = {}
+  for (let q = Q(2027, 1); q <= Q(2028, 4); q++) tomText.phdWork[q] = true
   fund('prj_emp', 'per_sara', Q(2026, 2), Q(2028, 2), 0) // works here inside her faculty-paid time
   fund('prj_waas', 'per_sara', Q(2026, 1), Q(2026, 4), 0)
   fund('prj_care', 'per_sara', Q(2026, 2), Q(2029, 1), 0.6) // CareLoop covers her remaining 20%

@@ -41,11 +41,21 @@ export interface Assignment {
   funded?: Record<number, number> // quarter -> PM this project pays, only where that differs from the plan
   actual?: Record<number, number> // month (year * 12 + month) -> days really worked
   /**
-   * Overlapping effort: the same work also counts elsewhere (e.g. PhD research that feeds a project).
+   * Overlapping effort: the same work also counts elsewhere (e.g. a fellowship that is planned as its own row).
    * It counts towards the project, but is not added to the person's load, and the project does not pay for it.
    */
-  overlap?: boolean
+  overlap?: Marks
+  /**
+   * Counts toward the person's PhD: project work that also advances their PhD.
+   * Only a note for assessing the PhD; load and funding stay as they are.
+   */
+  phdWork?: Marks
 }
+/** Quarters a mark applies to: true = the whole run of the project, or one entry per quarter. */
+export type Marks = boolean | Record<number, boolean>
+export type MarkKey = 'overlap' | 'phdWork'
+export const markAt = (m: Marks | undefined, q: number) => m === true || (!!m && typeof m === 'object' && !!m[q])
+export const markAny = (m: Marks | undefined) => m === true || (!!m && typeof m === 'object' && Object.values(m).some(Boolean))
 /* A PhD runs on top of project work: it has its own track, milestones and chapters, and takes no person-months. */
 export type ChapterStatus = 'not_started' | 'in_progress' | 'finished'
 export const CHAPTER_STATUS: Record<ChapterStatus, string> = {
@@ -205,7 +215,7 @@ export const initials = (name: string) =>
   name.split(/\s+/).filter(Boolean).map(w => w[0]).filter((_, i, a) => i === 0 || i === a.length - 1).join('').toUpperCase()
 
 /* ---------- State ---------- */
-const KEY = 'portfolio-prototype-v8'
+const KEY = 'portfolio-prototype-v9'
 /** With a shared database configured, nothing is kept in this browser: the data comes from there. */
 const REMOTE = !!(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY && import.meta.env.VITE_TEAM_EMAIL)
 /** Fill in anything a stored or imported dataset may lack, so older files keep working. */
@@ -351,7 +361,7 @@ export function resetDemo() {
 /* ---------- Derived ---------- */
 export const plannedOf = (a: Assignment, q: number) => a.pm[q] || 0
 /** What a project pays for someone in a quarter: the plan, unless it was set separately. */
-const defaultFunded = (a: Assignment, q: number) => (a.overlap ? 0 : a.pm[q] || 0)
+const defaultFunded = (a: Assignment, q: number) => (markAt(a.overlap, q) ? 0 : a.pm[q] || 0)
 export const fundedOf = (a: Assignment, q: number) => a.funded?.[q] ?? defaultFunded(a, q)
 /** True where plan and funding are not the same (works here unpaid, or paid here without working). */
 export const differs = (a: Assignment, q: number) => a.funded?.[q] !== undefined && a.funded[q] !== defaultFunded(a, q)
@@ -365,10 +375,11 @@ function sumBy(key: 'personId' | 'projectId', lens: Lens) {
   const m: Record<string, Record<number, number>> = {}
   for (const a of state.data.assignments) {
     // Overlapping effort is real for the project, but is not extra time for the person.
-    if (a.overlap && key === 'personId' && lens !== 'funding') continue
+    const skipLap = !!a.overlap && key === 'personId' && lens !== 'funding'
     const row = (m[a[key]] ??= {})
     const keys = lens === 'actuals' ? Object.keys(a.actual ?? {}) : [...Object.keys(a.pm), ...Object.keys(a.funded ?? {})]
     for (const q of new Set(keys)) {
+      if (skipLap && markAt(a.overlap, lens === 'actuals' ? mToQ(+q) : +q)) continue
       const v = valueOf(a, +q, lens)
       if (v) row[+q] = (row[+q] || 0) + v
     }
@@ -433,6 +444,22 @@ export const personById = (id: string) => state.data.people.find(p => p.id === i
 export const projectById = (id: string) => state.data.projects.find(p => p.id === id)
 export const phdById = (id: string) => state.data.phds.find(p => p.id === id)
 export const phdOf = (personId: string) => state.data.phds.find(p => p.personId === personId)
+/**
+ * Project work that counts toward a PhD in one quarter (or month, in days, for actuals),
+ * with the projects it comes from. Only inside the PhD's own run.
+ */
+export function phdWorkOf(phd: Phd, t: number, lens: Lens = 'plan') {
+  const q = lens === 'actuals' ? mToQ(t) : t
+  const parts: { project: Project; v: number }[] = []
+  if (q < phd.start || q > phd.end) return { total: 0, parts }
+  for (const a of state.data.assignments) {
+    if (a.personId !== phd.personId || !markAt(a.phdWork, q)) continue
+    const v = lens === 'actuals' ? a.actual?.[t] || 0 : plannedOf(a, t)
+    const project = projectById(a.projectId)
+    if (v && project) parts.push({ project, v })
+  }
+  return { total: parts.reduce((s, x) => s + x.v, 0), parts }
+}
 
 /* ---------- Actions ---------- */
 const uid = (prefix: string) => prefix + Math.random().toString(36).slice(2, 9)
@@ -476,9 +503,26 @@ export function fillFromPlan(m: number) {
   if (todo.length) mutate(() => { for (const a of todo) (a.actual ??= {})[m] = plannedDays(a, m) })
   return todo.length
 }
-export function toggleOverlap(id: string) {
+/**
+ * Switch a mark on or off for some quarters, or for the whole run when none are given.
+ * A mark that covers every quarter of the project is stored as `true`, so it follows the project when it grows.
+ */
+export function toggleMark(id: string, key: MarkKey, quarters?: number[]) {
   const a = state.data.assignments.find(x => x.id === id)
-  if (a) mutate(() => { a.overlap = !a.overlap })
+  const p = a && projectById(a.projectId)
+  if (!a || !p) return
+  const span: number[] = []
+  for (let q = p.start; q <= p.end; q++) span.push(q)
+  const qs = quarters?.length ? quarters : span
+  const on = !qs.every(q => markAt(a[key], q))
+  mutate(() => {
+    const cur = a[key]
+    const m: Record<number, boolean> = cur === true ? Object.fromEntries(span.map(q => [q, true])) : { ...(typeof cur === 'object' ? cur : {}) }
+    for (const q of qs) { if (on) m[q] = true; else delete m[q] }
+    if (span.every(q => m[q])) a[key] = true
+    else if (!Object.keys(m).length) delete a[key]
+    else a[key] = m
+  })
 }
 export function addAssignment(projectId: string, personId: string) {
   mutate(() => state.data.assignments.push({ id: uid('a_'), projectId, personId, pm: {} }))
@@ -535,6 +579,12 @@ export function pruneOutside(p: Spanned) {
     if (a.projectId !== p.id) continue
     for (const q of Object.keys(a.pm)) if (+q < p.start || +q > p.end) delete a.pm[+q]
     for (const q of Object.keys(a.funded ?? {})) if (+q < p.start || +q > p.end) delete a.funded![+q]
+    for (const key of ['overlap', 'phdWork'] as MarkKey[]) {
+      const m = a[key]
+      if (!m || m === true) continue
+      for (const q of Object.keys(m)) if (+q < p.start || +q > p.end) delete m[+q]
+      if (!Object.keys(m).length) delete a[key]
+    }
   }
 }
 export function addMilestone(p: Spanned) {
